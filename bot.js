@@ -34,6 +34,7 @@ function getOptionPrompt(lang) {
 }
 const XLSX = require('xlsx');
 const stringSimilarity = require('string-similarity');
+const transliterate = require('transliteration').transliterate;
 
 // Load FAQ data from Excel (2 columns: Question, Answer)
 function loadFAQs() {
@@ -93,6 +94,7 @@ const getLanguagePrompt = () =>
     `Please select your language:\n1. English\n2. हिन्दी\n3. मराठी\nReply with 1, 2, or 3.`;
 client.on('message', async msg => {
     const user = msg.from;
+    // If no state, start fresh
     if (!userState[user]) {
         userState[user] = { step: 'language' };
         // Use a per-user random greeting for more variety
@@ -107,11 +109,32 @@ client.on('message', async msg => {
     }
     const state = userState[user];
 
+    // Transliterate user input to handle Minglish/Hinglish
+    const input = transliterate(msg.body.trim().toLowerCase());
+
+    // Timeout logic: if last step was a yes/no prompt and >30s passed, reset chat
+    const yesNoSteps = ['faq_followup'];
+    if (yesNoSteps.includes(state.step) && state.yesNoPromptTime) {
+        const now = Date.now();
+        if (now - state.yesNoPromptTime > 30000) {
+            delete userState[user];
+            userState[user] = { step: 'language' };
+            let hash = 0;
+            for (let i = 0; i < user.length; i++) {
+                hash = ((hash << 5) - hash) + user.charCodeAt(i);
+                hash |= 0;
+            }
+            const greeting = GREETINGS[Math.abs(hash) % GREETINGS.length];
+            await msg.reply(`${greeting}\n\n${getLanguagePrompt()}`);
+            return;
+        }
+    }
+
     if (state.step === 'language') {
         let lang = null;
-        if (msg.body === '1') lang = 'en';
-        else if (msg.body === '2') lang = 'hi';
-        else if (msg.body === '3') lang = 'mr';
+        if (input === '1') lang = 'en';
+        else if (input === '2') lang = 'hi';
+        else if (input === '3') lang = 'mr';
         if (!lang) {
             await msg.reply(getLanguagePrompt());
             return;
@@ -143,8 +166,53 @@ client.on('message', async msg => {
                 default: reply = 'To file a grievance, please visit: https://example.com/grievance';
             }
             await msg.reply(reply);
-            // Reset user state so any new message restarts the flow
-            delete userState[user];
+            // Instead of ending, ask if they want FAQ or grievance again
+            let followup;
+            switch (state.lang) {
+                case 'hi': followup = 'क्या आप FAQ देखना चाहते हैं या एक और शिकायत दर्ज करना चाहते हैं?\n1. सामान्य प्रश्न (FAQ)\n2. शिकायत दर्ज करें\nउत्तर में 1 या 2 लिखें।'; break;
+                case 'mr': followup = 'आपण FAQ पाहू इच्छिता किंवा आणखी एक तक्रार नोंदवू इच्छिता?\n1. वारंवार विचारले जाणारे प्रश्न (FAQ)\n2. तक्रार नोंदवा\nउत्तरात 1 किंवा 2 लिहा.'; break;
+                default: followup = 'Would you like to see FAQs or file another grievance?\n1. Frequently Asked Questions (FAQ)\n2. File a Grievance\nReply with 1 or 2.';
+            }
+            state.step = 'post_grievance_option';
+            await msg.reply(followup);
+            return;
+        } else {
+            await msg.reply(getOptionPrompt(state.lang));
+            return;
+        }
+    }
+
+    // Handle post-grievance options
+    if (state.step === 'post_grievance_option') {
+        if (msg.body === '1') {
+            // FAQ selected after grievance
+            let reply;
+            switch (state.lang) {
+                case 'hi': reply = 'कृपया अपना प्रश्न पूछें (FAQ)।'; break;
+                case 'mr': reply = 'कृपया आपला प्रश्न विचारा (FAQ).'; break;
+                default: reply = 'Please type your FAQ question.';
+            }
+            state.step = 'faq';
+            await msg.reply(reply);
+            return;
+        } else if (msg.body === '2') {
+            // Grievance selected again
+            let reply;
+            switch (state.lang) {
+                case 'hi': reply = 'शिकायत दर्ज करने के लिए कृपया इस लिंक पर जाएं: https://example.com/grievance'; break;
+                case 'mr': reply = 'तक्रार नोंदविण्यासाठी कृपया या लिंकवर जा: https://example.com/grievance'; break;
+                default: reply = 'To file a grievance, please visit: https://example.com/grievance';
+            }
+            await msg.reply(reply);
+            // Ask again for options
+            let followup;
+            switch (state.lang) {
+                case 'hi': followup = 'क्या आप FAQ देखना चाहते हैं या एक और शिकायत दर्ज करना चाहते हैं?\n1. सामान्य प्रश्न (FAQ)\n2. शिकायत दर्ज करें\nउत्तर में 1 या 2 लिखें।'; break;
+                case 'mr': followup = 'आपण FAQ पाहू इच्छिता किंवा आणखी एक तक्रार नोंदवू इच्छिता?\n1. वारंवार विचारले जाणारे प्रश्न (FAQ)\n2. तक्रार नोंदवा\nउत्तरात 1 किंवा 2 लिहा.'; break;
+                default: followup = 'Would you like to see FAQs or file another grievance?\n1. Frequently Asked Questions (FAQ)\n2. File a Grievance\nReply with 1 or 2.';
+            }
+            state.step = 'post_grievance_option';
+            await msg.reply(followup);
             return;
         } else {
             await msg.reply(getOptionPrompt(state.lang));
@@ -153,8 +221,9 @@ client.on('message', async msg => {
     }
 
     if (state.step === 'faq') {
+        // Transliterate question for processing
+        const question = transliterate(msg.body);
         // Use Excel FAQ and Gemini for best answer, always reload latest FAQ data
-        let question = msg.body;
         let answer = '';
         try {
             // Step 1: Translate to English if needed
@@ -183,19 +252,45 @@ client.on('message', async msg => {
                 if (translated) translatedQuestion = translated.trim();
             }
 
-            // Step 2: FAQ matching in English
+            // Step 2: FAQ matching in English (fuzzy + keyword)
             const faqs = loadFAQs();
             const questions = faqs.map(f => f.Question);
             const matches = stringSimilarity.findBestMatch(translatedQuestion, questions);
             const bestIndex = matches.bestMatchIndex;
             const bestScore = matches.bestMatch.rating;
             let faq = null;
-            if (bestScore > 0.7) {
+            // Lower threshold for fuzzy match
+            if (bestScore > 0.5) {
                 faq = faqs[bestIndex];
+            } else {
+                // Keyword-based matching for short/partial queries with fuzzy keyword matching
+                const keywords = [
+                    { words: ['secretary', 'animal'], answer: null },
+                    // Add more keyword sets as needed
+                ];
+                const userWords = translatedQuestion.toLowerCase().split(/\W+/);
+                for (const row of faqs) {
+                    for (const keyset of keywords) {
+                        // Accept fuzzy match for each keyword (distance >= 0.7)
+                        const allMatch = keyset.words.every(kw =>
+                            userWords.some(uw => stringSimilarity.compareTwoStrings(kw, uw) >= 0.7)
+                        );
+                        if (allMatch) {
+                            faq = row;
+                            break;
+                        }
+                    }
+                    if (faq) break;
+                }
             }
             let context = '';
             if (faq) {
                 context = `Relevant FAQ:\nQ: ${faq.Question}\nA: ${faq.Answer}\n`;
+            } else {
+                // If no FAQ match, give Gemini the entire FAQ sheet as context
+                const faqs = loadFAQs();
+                const faqContext = faqs.map(f => `Q: ${f.Question}\nA: ${f.Answer}`).join('\n---\n');
+                context = `FAQ Sheet Context:\n${faqContext}\nUser Question: ${translatedQuestion}`;
             }
             let langInstruction = '';
             if (state.lang === 'hi') langInstruction = 'Reply in Hindi.';
@@ -240,16 +335,30 @@ client.on('message', async msg => {
             default: followup = 'Do you want to end the chat? Type yes or no.';
         }
         state.step = 'faq_followup';
+        state.yesNoPromptTime = Date.now();
         await msg.reply(followup);
         return;
     }
 
     if (state.step === 'faq_followup') {
         const input = msg.body.trim().toLowerCase();
-        // Accept many forms of yes/no
-        const yesList = ['yes', 'y', 'yeah', 'yep', 'sure', 'ok', 'okay', 'हाँ', 'होय'];
-        const noList = ['no', 'n', 'nope', 'nah', 'नहीं', 'नाही'];
-        if (yesList.includes(input)) {
+        // Accept many forms of yes/no, including Hindi/Marathi synonyms and similar words
+        let yesList, noList;
+        if (state.lang === 'hi') {
+            yesList = ['हाँ', 'ha', 'haan', 'han', 'ji', 'theek', 'ok', 'yes', 'y', 'yeah', 'sure'];
+            noList = ['नहीं', 'nahi', 'na', 'no', 'n', 'nah'];
+        } else if (state.lang === 'mr') {
+            yesList = ['होय', 'ho', 'hoy', 'theek', 'ok', 'yes', 'y', 'yeah', 'sure'];
+            noList = ['नाही', 'nahi', 'nako', 'no', 'n', 'nah'];
+        } else {
+            yesList = ['yes', 'y', 'yeah', 'sure', 'ok'];
+            noList = ['no', 'n', 'nah'];
+        }
+
+        const isYes = yesList.some(word => stringSimilarity.compareTwoStrings(input, word) >= 0.7);
+        const isNo = noList.some(word => stringSimilarity.compareTwoStrings(input, word) >= 0.7);
+
+        if (isYes) {
             let bye;
             switch (state.lang) {
                 case 'hi': bye = 'चैट समाप्त किया गया। धन्यवाद!'; break;
@@ -259,9 +368,15 @@ client.on('message', async msg => {
             delete userState[user];
             await msg.reply(bye);
             return;
-        } else if (noList.includes(input)) {
-            state.step = 'option';
-            await msg.reply(getOptionPrompt(state.lang));
+        } else if (isNo) {
+            state.step = 'faq';
+            let reply;
+            switch (state.lang) {
+                case 'hi': reply = 'कृपया अपना अगला प्रश्न पूछें (FAQ)।'; break;
+                case 'mr': reply = 'कृपया आपला पुढील प्रश्न विचारा (FAQ).'; break;
+                default: reply = 'Please type your next FAQ question.';
+            }
+            await msg.reply(reply);
             return;
         } else {
             let again;

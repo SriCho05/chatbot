@@ -39,6 +39,7 @@
     "puppeteer": "^24.16.2",
     "qrcode-terminal": "^0.12.0",
     "string-similarity": "^4.0.4",
+    "transliteration": "^2.3.5",
     "whatsapp-web.js": "^1.34.0",
     "xlsx": "^0.18.5"
   },
