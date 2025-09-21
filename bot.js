@@ -65,12 +65,23 @@ const GREETINGS = [
     'Welcome! This is the Animal Husbandry Department, Maharashtra.'
 ];
 
-const { Client } = require('whatsapp-web.js');
+const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
+const os = require('os');
 
+// Determine Puppeteer arguments based on environment
+const puppeteerArgs = [];
+if (os.platform() === 'linux' && process.getuid && process.getuid() === 0) {
+    // Add --no-sandbox flag if running as root on Linux (VPS)
+    puppeteerArgs.push('--no-sandbox', '--disable-setuid-sandbox');
+}
 
-
-const client = new Client();
+const client = new Client({
+    authStrategy: new LocalAuth(),
+    puppeteer: {
+        args: puppeteerArgs
+    }
+});
 
 client.on('qr', (qr) => {
     qrcode.generate(qr, { small: true });
