@@ -105,6 +105,28 @@ const getLanguagePrompt = () =>
     `Please select your language:\n1. English\n2. हिन्दी\n3. मराठी\nReply with 1, 2, or 3.`;
 client.on('message', async msg => {
     const user = msg.from;
+
+    // Check for the '!ping' command to reset the session
+    if (msg.body.trim().toLowerCase() === '!ping') {
+        let bye;
+        const state = userState[user];
+        if (state && state.lang === 'hi') {
+            bye = 'चैट समाप्त किया गया। धन्यवाद!';
+        } else if (state && state.lang === 'mr') {
+            bye = 'चॅट समाप्त केला. धन्यवाद!';
+        } else {
+            bye = 'Chat ended. Thank you!';
+        }
+        delete userState[user];
+        await msg.reply(bye);
+
+        // Restart the bot from the first step
+        userState[user] = { step: 'language' };
+        const greeting = GREETINGS[Math.floor(Math.random() * GREETINGS.length)];
+        await msg.reply(`${greeting}\n\n${getLanguagePrompt()}`);
+        return;
+    }
+
     // If no state, start fresh
     if (!userState[user]) {
         userState[user] = { step: 'language' };
@@ -298,7 +320,7 @@ client.on('message', async msg => {
             let langInstruction = '';
             if (state.lang === 'hi') langInstruction = 'Reply in Hindi.';
             else if (state.lang === 'mr') langInstruction = 'Reply in Marathi.';
-            const personaInstruction = 'Answer as a helpful assistant for the Department of Animal Husbandry, Maharashtra. Use the information from https://dahd.maharashtra.gov.in/en/ and the FAQ context to answer user questions as accurately as possible. Speak in the first person as "I" or "we" and address the user directly.';
+            const personaInstruction = `Answer as a helpful assistant for the Department of Animal Husbandry, Maharashtra. Use the information from https://dahd.maharashtra.gov.in/en/ and the FAQ context to answer user questions as accurately as possible. Speak in the first person as "I" or "we" and address the user directly. For diseases, include symptoms, causes, treatments, and preventive measures. For other concepts, provide a detailed and comprehensive explanation.`;
             // Always use Gemini to rephrase/format the answer, even if FAQ is matched
             const geminiPayload = {
                 contents: [
