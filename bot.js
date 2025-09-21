@@ -1,3 +1,23 @@
+// Save question and answer to data.xlsx
+function logQAtoExcel(question, answer) {
+    const XLSX = require('xlsx');
+    const fs = require('fs');
+    const file = 'data.xlsx';
+    let ws, wb;
+    if (fs.existsSync(file)) {
+        wb = XLSX.readFile(file);
+        ws = wb.Sheets[wb.SheetNames[0]];
+    } else {
+        wb = XLSX.utils.book_new();
+        ws = XLSX.utils.aoa_to_sheet([['Question', 'Answer']]);
+        XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+    }
+    const data = XLSX.utils.sheet_to_json(ws, { header: 1 });
+    data.push([question, answer]);
+    const newWs = XLSX.utils.aoa_to_sheet(data);
+    wb.Sheets[wb.SheetNames[0]] = newWs;
+    XLSX.writeFile(wb, file);
+}
 // Gemini API endpoint and key (use header, not URL param)
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 const GEMINI_API_KEY = 'AIzaSyA4yidzrTffDasI2-nmpfrVozb9WP4EmHc';
@@ -181,6 +201,7 @@ client.on('message', async msg => {
             if (state.lang === 'hi') langInstruction = 'Reply in Hindi.';
             else if (state.lang === 'mr') langInstruction = 'Reply in Marathi.';
             const personaInstruction = 'Answer as a helpful assistant for the Department of Animal Husbandry, Maharashtra. Use the information from https://dahd.maharashtra.gov.in/en/ and the FAQ context to answer user questions as accurately as possible. Speak in the first person as "I" or "we" and address the user directly.';
+            // Always use Gemini to rephrase/format the answer, even if FAQ is matched
             const geminiPayload = {
                 contents: [
                     {
@@ -208,7 +229,9 @@ client.on('message', async msg => {
             console.error('[Gemini] Error:', e);
             answer = 'Sorry, I could not get an answer from Gemini.';
         }
-        await msg.reply(answer);
+    await msg.reply(answer);
+    // Log question and answer to data.xlsx
+    logQAtoExcel(question, answer);
         // After answering, ask if user wants to end chat or continue
         let followup;
         switch (state.lang) {
@@ -223,7 +246,10 @@ client.on('message', async msg => {
 
     if (state.step === 'faq_followup') {
         const input = msg.body.trim().toLowerCase();
-        if (input === 'yes' || input === 'हाँ' || input === 'होय') {
+        // Accept many forms of yes/no
+        const yesList = ['yes', 'y', 'yeah', 'yep', 'sure', 'ok', 'okay', 'हाँ', 'होय'];
+        const noList = ['no', 'n', 'nope', 'nah', 'नहीं', 'नाही'];
+        if (yesList.includes(input)) {
             let bye;
             switch (state.lang) {
                 case 'hi': bye = 'चैट समाप्त किया गया। धन्यवाद!'; break;
@@ -233,7 +259,7 @@ client.on('message', async msg => {
             delete userState[user];
             await msg.reply(bye);
             return;
-        } else if (input === 'no' || input === 'नहीं' || input === 'नाही') {
+        } else if (noList.includes(input)) {
             state.step = 'option';
             await msg.reply(getOptionPrompt(state.lang));
             return;
