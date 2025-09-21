@@ -118,15 +118,7 @@ client.on('message', async msg => {
         const now = Date.now();
         if (now - state.yesNoPromptTime > 30000) {
             delete userState[user];
-            userState[user] = { step: 'language' };
-            let hash = 0;
-            for (let i = 0; i < user.length; i++) {
-                hash = ((hash << 5) - hash) + user.charCodeAt(i);
-                hash |= 0;
-            }
-            const greeting = GREETINGS[Math.abs(hash) % GREETINGS.length];
-            await msg.reply(`${greeting}\n\n${getLanguagePrompt()}`);
-            return;
+            return; // Do not send any message; wait for the next user input
         }
     }
 
@@ -367,7 +359,7 @@ client.on('message', async msg => {
             }
             delete userState[user];
             await msg.reply(bye);
-            return;
+            return; // Do not send any further messages
         } else if (isNo) {
             state.step = 'faq';
             let reply;
