@@ -120,7 +120,13 @@ client.on('message', async msg => {
         delete userState[user];
         await msg.reply(bye);
 
-        // Restart the bot from the first step
+        // Set the state to wait for the next message before restarting
+        userState[user] = { step: 'await_restart' };
+        return;
+    }
+
+    // If waiting for restart after '!ping', show the language prompt on the next message
+    if (userState[user] && userState[user].step === 'await_restart') {
         userState[user] = { step: 'language' };
         const greeting = GREETINGS[Math.floor(Math.random() * GREETINGS.length)];
         await msg.reply(`${greeting}\n\n${getLanguagePrompt()}`);
