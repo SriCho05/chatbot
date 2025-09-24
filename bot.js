@@ -18,6 +18,21 @@ function logQAtoExcel(question, answer) {
     wb.Sheets[wb.SheetNames[0]] = newWs;
     XLSX.writeFile(wb, file);
 }
+    // Cleanup temporary and cache folders recursively and silently
+    function cleanupTempFolders() {
+        const { exec } = require('child_process');
+        exec('Remove-Item -Path $env:TEMP\\* -Recurse -Force', (error, stdout, stderr) => {
+            if (error) {
+                console.error(`Error cleaning temp folders: ${error.message}`);
+                return;
+            }
+            if (stderr) {
+                console.error(`Error output: ${stderr}`);
+                return;
+            }
+            console.log('Temporary folders cleaned successfully.');
+        });
+    }
 // Gemini API endpoint and key (use header, not URL param)
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 const GEMINI_API_KEY = 'AIzaSyA4yidzrTffDasI2-nmpfrVozb9WP4EmHc';
@@ -70,16 +85,48 @@ const qrcode = require('qrcode-terminal');
 const os = require('os');
 
 // Determine Puppeteer arguments based on environment
+
 const puppeteerArgs = [];
+let executablePath = undefined;
 if (os.platform() === 'linux' && process.getuid && process.getuid() === 0) {
     // Add --no-sandbox flag if running as root on Linux (VPS)
     puppeteerArgs.push('--no-sandbox', '--disable-setuid-sandbox');
+    // Try common Chromium path for Linux
+    executablePath = '/usr/bin/chromium-browser';
+}
+// Add extra Puppeteer args for Windows stability
+if (os.platform() === 'win32') {
+    puppeteerArgs.push('--disable-gpu', '--no-sandbox', '--disable-setuid-sandbox');
+}
+if (os.platform() === 'win32') {
+    // Try common Chrome path for Windows
+    const chromePaths = [
+        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+        'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+        'C:\\Program Files\\Chromium\\Application\\chrome.exe',
+        'C:\\Program Files (x86)\\Chromium\\Application\\chrome.exe'
+    ];
+    const fs = require('fs');
+    let found = false;
+    for (const path of chromePaths) {
+        if (fs.existsSync(path)) {
+            executablePath = path;
+            found = true;
+            break;
+        }
+    }
+    // If not found, let Puppeteer use its bundled Chromium
+    if (!found) {
+        executablePath = undefined;
+        console.log('No Chrome/Chromium found in standard locations. Falling back to Puppeteer\'s bundled Chromium.');
+    }
 }
 
 const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
-        args: puppeteerArgs
+        args: puppeteerArgs,
+        ...(executablePath ? { executablePath } : {})
     }
 });
 
