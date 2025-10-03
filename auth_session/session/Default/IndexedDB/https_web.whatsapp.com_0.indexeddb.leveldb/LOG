@@ -1,0 +1,23 @@
+2025/10/03-17:26:37.545 3a74 Reusing MANIFEST /home/animalhusbadary/Documents/chatbot/auth_session/session/Default/IndexedDB/https_web.whatsapp.com_0.indexeddb.leveldb/MANIFEST-000001
+2025/10/03-17:26:37.546 3a74 Recovering log #288
+2025/10/03-17:26:37.794 3a74 Reusing old log /home/animalhusbadary/Documents/chatbot/auth_session/session/Default/IndexedDB/https_web.whatsapp.com_0.indexeddb.leveldb/000288.log 
+2025/10/03-17:26:40.944 3a75 Level-0 table #298: started
+2025/10/03-17:26:41.105 3a75 Level-0 table #298: 1490187 bytes OK
+2025/10/03-17:26:41.114 3a75 Delete type=0 #288
+2025/10/03-17:26:41.117 3a75 Manual compaction at level-0 from '\x00*\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00+\x00\x00\x00' @ 0 : 0; will stop at (end)
+2025/10/03-17:26:47.678 3a7e Compacting 1@1 + 6@2 files
+2025/10/03-17:26:48.085 3a7e Generated table #299@1: 36210 keys, 2242596 bytes
+2025/10/03-17:26:48.482 3a7e Generated table #300@1: 28071 keys, 2179050 bytes
+2025/10/03-17:26:48.805 3a7e Generated table #301@1: 544 keys, 2141024 bytes
+2025/10/03-17:26:49.006 3a7e Generated table #302@1: 20432 keys, 2174354 bytes
+2025/10/03-17:26:49.349 3a7e Generated table #303@1: 51508 keys, 2186702 bytes
+2025/10/03-17:26:49.479 3a7e Generated table #304@1: 26481 keys, 595052 bytes
+2025/10/03-17:26:49.480 3a7e Compacted 1@1 + 6@2 files => 11518778 bytes
+2025/10/03-17:26:49.489 3a7e compacted to: files[ 0 0 6 0 0 0 0 ]
+2025/10/03-17:26:49.490 3a7e Delete type=2 #295
+2025/10/03-17:26:49.490 3a7e Delete type=2 #298
+2025/10/03-17:26:49.490 3a7e Delete type=2 #294
+2025/10/03-17:26:49.491 3a7e Delete type=2 #290
+2025/10/03-17:26:49.491 3a7e Delete type=2 #293
+2025/10/03-17:26:49.491 3a7e Delete type=2 #292
+2025/10/03-17:26:49.491 3a7e Delete type=2 #291

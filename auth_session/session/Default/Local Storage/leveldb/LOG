@@ -1,0 +1,6 @@
+2025/10/03-17:26:36.139 3aa6 Reusing MANIFEST /home/animalhusbadary/Documents/chatbot/auth_session/session/Default/Local Storage/leveldb/MANIFEST-000001
+2025/10/03-17:26:36.162 3aa6 Recovering log #23
+2025/10/03-17:26:36.166 3aa6 Reusing old log /home/animalhusbadary/Documents/chatbot/auth_session/session/Default/Local Storage/leveldb/000023.log 
+2025/10/03-17:28:37.478 3aa6 Level-0 table #28: started
+2025/10/03-17:28:37.494 3aa6 Level-0 table #28: 15248 bytes OK
+2025/10/03-17:28:37.502 3aa6 Delete type=0 #23

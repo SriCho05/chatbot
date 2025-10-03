@@ -33,9 +33,64 @@ function logQAtoExcel(question, answer) {
             console.log('Temporary folders cleaned successfully.');
         });
     }
-// Gemini API endpoint and key (use header, not URL param)
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
-const GEMINI_API_KEY = 'AIzaSyA4yidzrTffDasI2-nmpfrVozb9WP4EmHc';
+// Google GenAI SDK
+const { GoogleGenerativeAI } = require('@google/generative-ai');
+const GEMINI_API_KEY = 'AIzaSyDhxq4_Xzz0vC85P0geecoAAOlECWS9Grg';
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+
+// Test Gemini API connection
+async function testGeminiAPI() {
+    try {
+        console.log('🧪 Testing Gemini API connection...');
+        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
+        const result = await model.generateContent("Say 'Hello, API is working!'");
+        const response = await result.response;
+        const text = response.text();
+        
+        console.log('✅ Gemini API is working!', text.substring(0, 50));
+        return true;
+    } catch (error) {
+        console.error('❌ Gemini API connection error:', error.message);
+        return false;
+    }
+}
+
+// Fallback function for when Gemini is not available
+function getFallbackAnswer(question, faqs, lang = 'en') {
+    // Simple keyword matching
+    const keywords = question.toLowerCase().split(/\s+/);
+    let bestMatch = null;
+    let bestScore = 0;
+    
+    for (const faq of faqs) {
+        const faqText = (faq.Question + ' ' + faq.Answer).toLowerCase();
+        let score = 0;
+        
+        for (const keyword of keywords) {
+            if (keyword.length > 2 && faqText.includes(keyword)) {
+                score += keyword.length;
+            }
+        }
+        
+        if (score > bestScore) {
+            bestScore = score;
+            bestMatch = faq;
+        }
+    }
+    
+    if (bestMatch && bestScore > 5) {
+        return `Based on our FAQ database:\n\n**Q:** ${bestMatch.Question}\n**A:** ${bestMatch.Answer}\n\n_Note: AI assistance is currently unavailable. This is a direct FAQ match._`;
+    }
+    
+    // Default responses for common queries
+    const defaultResponses = {
+        en: "I apologize, but our AI system is currently unavailable. Please contact the Animal Husbandry Department directly at +91-22-xxxx-xxxx or visit https://dahd.maharashtra.gov.in/ for assistance.",
+        hi: "मुझे खुशी है कि मैं आपकी सहायता नहीं कर सकता क्योंकि हमारी AI प्रणाली वर्तमान में उपलब्ध नहीं है। कृपया पशुपालन विभाग से सीधे संपर्क करें।",
+        mr: "माफ करा, आमची AI प्रणाली सध्या उपलब्ध नाही. कृपया प्राणी संवर्धन विभागाशी थेट संपर्क साधा."
+    };
+    
+    return defaultResponses[lang] || defaultResponses.en;
+}
 // Returns the FAQ/Grievance options prompt in the selected language
 function getOptionPrompt(lang) {
     switch (lang) {
@@ -86,13 +141,41 @@ const os = require('os');
 
 // Determine Puppeteer arguments based on environment
 
-const puppeteerArgs = [];
+const puppeteerArgs = [
+    '--disable-dev-shm-usage',
+    '--disable-accelerated-2d-canvas',
+    '--no-first-run',
+    '--no-zygote',
+    '--disable-gpu',
+    '--disable-web-security',
+    '--disable-features=VizDisplayCompositor',
+    '--disable-background-timer-throttling',
+    '--disable-backgrounding-occluded-windows',
+    '--disable-renderer-backgrounding',
+    '--disable-extensions',
+    '--disable-plugins',
+    '--disable-default-apps'
+];
+
 let executablePath = undefined;
-if (os.platform() === 'linux' && process.getuid && process.getuid() === 0) {
-    // Add --no-sandbox flag if running as root on Linux (VPS)
+
+if (os.platform() === 'linux') {
+    // Add Linux-specific flags for better stability
     puppeteerArgs.push('--no-sandbox', '--disable-setuid-sandbox');
-    // Try common Chromium path for Linux
-    executablePath = '/usr/bin/chromium-browser';
+    // Try common Chromium/Chrome paths for Linux
+    const fs = require('fs');
+    const linuxChromePaths = [
+        '/usr/bin/google-chrome',
+        '/usr/bin/chromium-browser',
+        '/usr/bin/chromium',
+        '/snap/bin/chromium'
+    ];
+    for (const path of linuxChromePaths) {
+        if (fs.existsSync(path)) {
+            executablePath = path;
+            break;
+        }
+    }
 }
 // Add extra Puppeteer args for Windows stability
 if (os.platform() === 'win32') {
@@ -123,10 +206,22 @@ if (os.platform() === 'win32') {
 }
 
 const client = new Client({
-    authStrategy: new LocalAuth(),
+    authStrategy: new LocalAuth({
+        dataPath: './auth_session'
+    }),
     puppeteer: {
         args: puppeteerArgs,
-        ...(executablePath ? { executablePath } : {})
+        ...(executablePath ? { executablePath } : {}),
+        headless: true,
+        defaultViewport: null,
+        timeout: 60000,
+        handleSIGINT: false,
+        handleSIGTERM: false,
+        handleSIGHUP: false
+    },
+    webVersionCache: {
+        type: 'remote',
+        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
     }
 });
 
@@ -137,6 +232,32 @@ client.on('qr', (qr) => {
 
 client.on('ready', () => {
     console.log('✅ WhatsApp bot is now connected and ready!');
+});
+
+client.on('authenticated', () => {
+    console.log('✅ Authentication successful!');
+});
+
+client.on('auth_failure', (msg) => {
+    console.error('❌ Authentication failed:', msg);
+});
+
+client.on('disconnected', (reason) => {
+    console.log('🔌 Bot disconnected:', reason);
+    console.log('🔄 Attempting to reconnect...');
+});
+
+client.on('loading_screen', (percent, message) => {
+    console.log('Loading WhatsApp Web...', percent, message);
+});
+
+client.on('change_state', state => {
+    console.log('🔄 Connection state changed:', state);
+});
+
+// Handle client errors
+client.on('error', (error) => {
+    console.error('❌ Client error:', error.message || error);
 });
 
 // In-memory user state (resets on restart)
@@ -299,6 +420,7 @@ client.on('message', async msg => {
     }
 
     if (state.step === 'faq') {
+        console.log(`[FAQ] Processing question: "${msg.body}" from user: ${user}`);
         // Transliterate question for processing
         const question = transliterate(msg.body);
         // Use Excel FAQ and Gemini for best answer, always reload latest FAQ data
@@ -317,17 +439,20 @@ client.on('message', async msg => {
                         }
                     ]
                 };
-                const translateResponse = await fetch(GEMINI_API_URL, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-goog-api-key': GEMINI_API_KEY
-                    },
-                    body: JSON.stringify(translatePayload)
-                });
-                const translateData = await translateResponse.json();
-                const translated = translateData.candidates && translateData.candidates[0] && translateData.candidates[0].content && translateData.candidates[0].content.parts && translateData.candidates[0].content.parts[0].text;
-                if (translated) translatedQuestion = translated.trim();
+                console.log('[Translation] Making API call...');
+                try {
+                    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
+                    const result = await model.generateContent(translatePrompt);
+                    const response = await result.response;
+                    const translated = response.text();
+                    
+                    if (translated) {
+                        translatedQuestion = translated.trim();
+                        console.log('[Translation] Success:', translatedQuestion);
+                    }
+                } catch (error) {
+                    console.error('[Translation] Error:', error.message);
+                }
             }
 
             // Step 2: FAQ matching in English (fuzzy + keyword)
@@ -374,35 +499,34 @@ client.on('message', async msg => {
             if (state.lang === 'hi') langInstruction = 'Reply in Hindi.';
             else if (state.lang === 'mr') langInstruction = 'Reply in Marathi.';
             const personaInstruction = `Answer as a helpful assistant for the Department of Animal Husbandry, Maharashtra. Use the information from https://dahd.maharashtra.gov.in/en/ and the FAQ context to answer user questions as accurately as possible. Speak in the first person as "I" or "we" and address the user directly. For diseases, include symptoms, causes, treatments, and preventive measures. For other concepts, provide a detailed and comprehensive explanation.`;
-            // Always use Gemini to rephrase/format the answer, even if FAQ is matched
-            const geminiPayload = {
-                contents: [
-                    {
-                        parts: [
-                            {
-                                text: `${personaInstruction} ${langInstruction}\n${context}Original Question: ${question}\nQuestion (English): ${translatedQuestion}`
-                            }
-                        ]
-                    }
-                ]
-            };
-            const response = await fetch(GEMINI_API_URL, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-goog-api-key': GEMINI_API_KEY
-                },
-                body: JSON.stringify(geminiPayload)
-            });
-            const data = await response.json();
-            answer = data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0].text
-                ? data.candidates[0].content.parts[0].text
-                : 'Sorry, I could not get an answer from Gemini.';
+            
+            // Check if Gemini is available, otherwise use fallback
+            if (!GEMINI_AVAILABLE) {
+                answer = getFallbackAnswer(translatedQuestion, faqs, state.lang);
+            } else {
+                try {
+                    // Always use Gemini to rephrase/format the answer, even if FAQ is matched
+                    const prompt = `${personaInstruction} ${langInstruction}\n${context}Original Question: ${question}\nQuestion (English): ${translatedQuestion}`;
+                    
+                    console.log('[Gemini] Making API call...');
+                    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
+                    const result = await model.generateContent(prompt);
+                    const response = await result.response;
+                    answer = response.text();
+                    
+                    console.log('[Gemini] Success! Got answer:', answer.substring(0, 100) + '...');
+                } catch (e) {
+                    console.error('[Gemini] Error:', e.message);
+                    console.error('[Gemini] Stack:', e.stack);
+                    answer = `Sorry, I could not get an answer from Gemini. Error: ${e.message}`;
+                }
+            }
         } catch (e) {
-            console.error('[Gemini] Error:', e);
-            answer = 'Sorry, I could not get an answer from Gemini.';
+            console.error('[FAQ Processing] Error:', e.message);
+            answer = getFallbackAnswer(question, loadFAQs(), state.lang);
         }
-    await msg.reply(answer);
+        
+        await msg.reply(answer);
     // Log question and answer to data.xlsx
     logQAtoExcel(question, answer);
         // After answering, ask if user wants to end chat or continue
@@ -433,8 +557,10 @@ client.on('message', async msg => {
             noList = ['no', 'n', 'nah'];
         }
 
-        const isYes = yesList.some(word => stringSimilarity.compareTwoStrings(input, word) >= 0.7);
-        const isNo = noList.some(word => stringSimilarity.compareTwoStrings(input, word) >= 0.7);
+        const isYes = yesList.some(word => input.includes(word.toLowerCase()) || stringSimilarity.compareTwoStrings(input, word) >= 0.7);
+        const isNo = noList.some(word => input.includes(word.toLowerCase()) || stringSimilarity.compareTwoStrings(input, word) >= 0.7);
+        
+        console.log(`[FAQ Followup] User input: "${input}", isYes: ${isYes}, isNo: ${isNo}`);
 
         if (isYes) {
             let bye;
@@ -448,11 +574,12 @@ client.on('message', async msg => {
             return; // Do not send any further messages
         } else if (isNo) {
             state.step = 'faq';
+            delete state.yesNoPromptTime; // Clear the timeout
             let reply;
             switch (state.lang) {
-                case 'hi': reply = 'कृपया अपना अगला प्रश्न पूछें (FAQ)।'; break;
-                case 'mr': reply = 'कृपया आपला पुढील प्रश्न विचारा (FAQ).'; break;
-                default: reply = 'Please type your next FAQ question.';
+                case 'hi': reply = 'ठीक है! कृपया अपना अगला प्रश्न पूछें। मैं आपकी मदद करने के लिए यहाँ हूँ।'; break;
+                case 'mr': reply = 'ठीक आहे! कृपया आपला पुढील प्रश्न विचारा. मी आपल्या मदतीसाठी येथे आहे.'; break;
+                default: reply = 'Great! Please ask your next question. I\'m here to help you with information about animal husbandry.';
             }
             await msg.reply(reply);
             return;
@@ -473,5 +600,54 @@ client.on('message', async msg => {
         await msg.reply('Type !ping for a test or restart the conversation.');
     });
 
-    // Start the WhatsApp client
-    client.initialize();
+    // Add process error handlers
+    process.on('unhandledRejection', (reason, promise) => {
+        console.error('❌ Unhandled Rejection:', reason.message || reason);
+        // Don't exit on unhandled rejections, just log them
+    });
+
+    process.on('uncaughtException', (error) => {
+        console.error('❌ Uncaught Exception:', error.message || error);
+        process.exit(1);
+    });
+
+    // Handle graceful shutdown
+    process.on('SIGINT', () => {
+        console.log('\n🛑 Shutting down bot gracefully...');
+        client.destroy().then(() => {
+            console.log('✅ Bot shutdown complete');
+            process.exit(0);
+        }).catch((err) => {
+            console.error('❌ Error during shutdown:', err.message);
+            process.exit(1);
+        });
+    });
+
+    // Global variable to track Gemini availability
+    let GEMINI_AVAILABLE = false;
+
+    // Initialize bot function
+    async function initializeBot() {
+        // Test Gemini API first
+        GEMINI_AVAILABLE = await testGeminiAPI();
+        if (!GEMINI_AVAILABLE) {
+            console.log('⚠️ Warning: Gemini API is not working properly. Bot will use fallback FAQ system.');
+        }
+        
+        // Start the WhatsApp client with better error handling
+        console.log('🚀 Starting WhatsApp bot...');
+        
+        try {
+            await client.initialize();
+        } catch (error) {
+            console.error('❌ Failed to initialize WhatsApp client:', error.message);
+            console.log('🔄 Retrying in 5 seconds...');
+            setTimeout(() => {
+                console.log('🚀 Restarting bot...');
+                process.exit(1);
+            }, 5000);
+        }
+    }
+    
+    // Start the bot
+    initializeBot();
