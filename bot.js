@@ -212,16 +212,17 @@ const client = new Client({
     puppeteer: {
         args: puppeteerArgs,
         ...(executablePath ? { executablePath } : {}),
-        headless: true,
+        headless: false, // Show browser for QR code
         defaultViewport: null,
         timeout: 60000,
+        protocolTimeout: 120000, // Increase protocol timeout to 2 minutes
         handleSIGINT: false,
         handleSIGTERM: false,
         handleSIGHUP: false
     },
     webVersionCache: {
         type: 'remote',
-        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
+        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
     }
 });
 
